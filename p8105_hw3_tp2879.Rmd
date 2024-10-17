@@ -29,3 +29,221 @@ options(
 scale_colour_discrete = scale_colour_viridis_d
 scale_fill_discrete = scale_fill_viridis_d
 ```
+
+
+
+# Problem 2
+
+## Loading, tidying, merging, and organizing the data sets
+```{r message = FALSE}
+accel_df = read_csv(file = "./hw3_data/nhanes_accel.csv") |> 
+  janitor::clean_names()
+
+covar_df = read_csv(file = "./hw3_data/nhanes_covar.csv", skip = 4) |> 
+  janitor::clean_names()
+```
+
+
+```{r}
+nhanes_df = accel_df |> 
+  left_join(covar_df, by = "seqn") |> 
+  filter(age >= 21) |>
+  mutate(
+    sex = as.character(sex), 
+    sex = case_match(
+      sex,
+      "1" ~ "male",
+      "2" ~ "female"),
+    education = as.character(education),
+    education = case_match(
+      education,
+      "1" ~ "Less than high school",
+      "2" ~ "High school equivalent",
+      "3" ~ "More than high school"
+    )
+  ) |>
+  distinct()
+```
+
+
+## Number of men and women in each education category
+```{r}
+nhanes_df |> 
+  group_by(education, sex) |> 
+  summarize(
+    count = n(), .groups = 'drop') |> 
+  pivot_wider(
+    names_from = education, 
+    values_from = count) |> 
+  knitr::kable(
+    caption = "Number of Men and Women in Each Education Category"
+  )
+```
+
+According to the table, participants in the 'More than high school' education category make up most of the total population compared to the 'High school equivalent' and 'Less than high school' education categories. Within the 'High school equivalent' category, there are 13 more males than females, 1 more female than males within the 'Less than high school' category, and 3 more females than males within the 'More than high school' category. 
+
+### Visualization
+```{r}
+nhanes_df |> 
+  group_by(sex, education, age) |> 
+  ggplot(aes(x = education, y = age, color = sex)) +
+  geom_boxplot() +
+  labs(
+    title = "Distribution of Age by Sex and Education",
+    x = "Education",
+    y = "Age"
+  )
+```
+
+A boxplot is used to visualize the median age between men and women across the different education categories as it is much easier to interpret for readers than other plots. The plot shows that females have a higher median age in the 'High school equivalent' category and the 'Less than high school' category. However, men have a slightly higher median age in the 'More than high school category.
+
+## Total activities vs. age
+```{r}
+total_df = 
+  nhanes_df |> 
+  mutate(
+    total_activity = rowSums(across(c(min1:min1440)))
+  ) |> 
+  select(seqn:education, total_activity)
+```
+
+```{r message = FALSE}
+total_df |> 
+  ggplot(aes(x = age, y = total_activity, color = sex)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE) +
+  facet_grid(~ education) +
+  labs(
+    title = "Total Activity vs. Age by Gender and Education Level",
+       x = "Age (years)",
+       y = "Total Activity over 24 hours")
+```
+
+Based on the plot it is clear that women across all education categories have higher total activity compared to men until age 50. This trend continues for those in the 'High school equivalent' and 'More than high school' categories, however, males have more total activity than females after age 50 in the 'Less than high school' category. In the 'high school equivalent' category, there is a sharp jump in female total activity around age 30 and begins to decrease and level to that of males around age 50. In the 'More than high school' category, it seems that male activity drops around age 60 compared to females.
+
+## 24-hour activity time courses for each education level
+```{r message = FALSE}
+panel_df = 
+  nhanes_df |> 
+  select(-seqn, -bmi, -age) |> 
+  group_by(sex, education) |> 
+  summarize(across(min1:min1440, mean)) |> 
+  pivot_longer(
+    min1:min1440, 
+    names_to = "minutes",
+    values_to = "activity"
+  ) 
+```
+
+```{r message = FALSE}
+panel_df |> 
+  ggplot(aes(x = minutes, y = activity, color = sex)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(se = FALSE) +
+  facet_grid(education ~ .) +
+  labs(
+    title = "Progression of activity over 24 hours"
+  )
+```
+
+Based on this graph, one can conclude that since minute 0 corresponds to midnight or 12AM that is is when people are going to sleep and winding down from the day. This explains the gradual decline in activity patterns until about a third into the progression. By then it is the time when people are waking up and getting ready for the day. This is where the progression is seen to be increasing and slowly keeping steadty until the last few hours of the day. Females, especially those in the 'More than high school' education category, tend to have more total activity throughout the day compared to males.
+
+# Problem 3
+
+## Importing, cleaning, and tidying data on rides taken on the NYC Citi Bike system
+```{r message = FALSE}
+jan_2020 = read_csv(file = "./hw3_data/Jan_2020_Citi.csv") |> 
+  drop_na() |> 
+  janitor::clean_names() |> 
+  mutate(month_year = "jan_20") |> 
+  select(month_year, everything())
+
+jan_2024 = read_csv(file = "./hw3_data/Jan_2024_Citi.csv") |> 
+  drop_na() |> 
+  janitor::clean_names() |> 
+  mutate(month_year = "jan_24") |> 
+  select(month_year, everything())
+
+july_2020 = read_csv(file = "./hw3_data/July_2020_Citi.csv") |>  
+  drop_na() |> 
+  janitor::clean_names() |> 
+  mutate(month_year = "jul_20") |> 
+  select(month_year, everything())
+
+july_2024 = read_csv(file = "./hw3_data/July_2024_Citi.csv") |>
+  drop_na() |> 
+  janitor::clean_names() |> 
+  mutate(month_year = "jul_24") |> 
+  select(month_year, everything())
+
+citibike_df = 
+  bind_rows(jan_2020, jan_2024, july_2020, july_2024)
+```
+
+There are 4 data sets including data for Citi Bike from January 2020, January 2024, July 2020 and July 2024. The variables within each data set are very similar and were therefore merged into the citibike data frame.
+
+## Total number of rides in each combination of year and month, separating casual riders and Citi Bike members
+```{r}
+citibike_df |> 
+  group_by(month_year, member_casual) |> 
+  summarize(
+    count = n(), .groups = 'drop') |> 
+  pivot_wider(
+    names_from = "member_casual", 
+    values_from = "count") |> 
+  knitr::kable(
+    caption = "Total number of rides by casual riders and Citi Bike members"
+  )
+```
+
+According to the table, there were far more members using Citi Bike across each month observed compared to casual riders. In addition, it it seems that both casual riding and member riding increased from January 2020 to July 2024.
+
+## 5 most popular starting stations for July 2024
+```{r}
+july_2024 |> 
+  group_by(start_station_name) |> 
+  count(start_station_name, name = "ride_count") |> 
+  arrange(desc(ride_count)) |> 
+  filter(ride_count >= 145) |> 
+  knitr::kable(
+    col.names = c("Origin Station Name", "Number of Rides")
+  )
+```
+
+
+## Investigating the effects of day of the week, month, and year on median ride duration
+```{r message = FALSE}
+citibike_df |> 
+  group_by(month_year, weekdays) |> 
+  summarize(
+    median = median(duration, na.rm = TRUE)) |> 
+  ggplot(aes(x = weekdays, y = median, color = month_year)) +
+  geom_point() +
+  facet_grid(. ~ month_year) +
+  labs(
+    title = "Ride duration over week and 4 timepoints",
+    x = "Days of the Week", 
+    y = "Median of Ride Duration"
+  )
+```
+
+It is clear, according to the plot, that July 2020 had the highest ridership median compared to January 2024 which had the lowest. This may be due to the pandemic and summer weather in which many people prefered to be outdoors. Ridership was generally higher in July 2020 and July 2024 compared to January 2020 and January 2024, which can be attributable to the summer weather. In addition, Saturday and Sunday have the most ridership compared to other days of the week, except in January 2024, the most ridership was on Friday and Saturday.
+
+## Impact of month, membership status, and bike type on the ditribution of ride duration
+```{r message = FALSE}
+citibike_df |> 
+  group_by(month_year, rideable_type, member_casual) |> 
+  select(month_year, rideable_type, member_casual, duration) |> 
+  filter(month_year %in% c("jan_24", "jul_24")) |> 
+  ggplot(aes(x = duration, fill = rideable_type)) +
+  geom_histogram(binwidth = 2) +
+  facet_grid(member_casual ~ month_year) +
+  labs(
+    title = "Electric bikes ridership based on types of riders and time",
+    x = "Month",
+    y = "Ride Duration",
+    color = "Types of Riders"
+  )
+```
+
+Based on the plot, it is clear that members using a classic bike have a longer ride duration compared to members using electric bikes, which is prevalent in January 2024, but dramatically increases in July 2024. For casual riders, there are slightly longer durations while using a classic bike than a Citi Bike during July 2024, however, casual members used classic bike and electric bikes and nearly the same rate in January 2024.
